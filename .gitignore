@@ -1,7 +1,9 @@
 # Terraform state files
 *.tfstate
 *.tfstate.backup
+*.tfstate.*
 .terraform/
+.terraform.lock.hcl
 
 # Crash logs
 crash.log
@@ -18,6 +20,8 @@ override.tf.json
 # Sensitive variable files
 *.tfvars
 *.tfvars.json
+*.auto.tfvars
+*.auto.tfvars.json
 
 # CLI configuration files
 .terraformrc
@@ -27,9 +31,38 @@ terraform.rc
 *.swp
 *.swo
 *.DS_Store
+.DS_Store
 *.idea/
 .vscode/
 *.log
 
 # Backup files
 *~
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+*.pid
+
+# Helm charts (if you want to exclude them)
+# charts/*/charts/
+# charts/*/requirements.lock
+
+# Node modules (if any)
+node_modules/
+
+# Python (if any)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env

@@ -19,3 +19,16 @@ module "ecr" {
   scan_on_push = true
 }
 
+module "eks" {
+  source        = "./modules/eks"
+  cluster_name  = "lesson-7-eks"
+  vpc_id        = module.vpc.vpc_id
+  subnet_ids    = module.vpc.private_subnet_ids
+  instance_types = ["t3.medium"]
+  desired_size  = 2
+  max_size      = 6
+  min_size      = 1
+
+  depends_on = [module.vpc, module.ecr]
+}
+
