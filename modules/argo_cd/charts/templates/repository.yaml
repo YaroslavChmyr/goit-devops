@@ -1,0 +1,28 @@
+{{- range .Values.repositories }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .name }}
+  namespace: {{ .namespace }}
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: {{ .type }}
+  url: {{ .url }}
+  {{- if .username }}
+  username: {{ .username }}
+  {{- end }}
+  {{- if .password }}
+  password: {{ .password }}
+  {{- end }}
+  {{- if .sshPrivateKey }}
+  sshPrivateKey: {{ .sshPrivateKey }}
+  {{- end }}
+  {{- if .insecure }}
+  insecure: {{ .insecure | toString }}
+  {{- end }}
+  {{- if .enableLfs }}
+  enableLfs: {{ .enableLfs | toString }}
+  {{- end }}
+{{- end }}

@@ -1,38 +1,57 @@
-# Kubernetes кластер з ECR та Helm
+# CI/CD Pipeline з Jenkins + Helm + Terraform + Argo CD
 
-Цей проект розширює попередню інфраструктуру Terraform для створення Kubernetes кластера (EKS) з інтеграцією ECR та Helm чартами для розгортання Django додатку.
+Цей проект реалізує повний процес CI/CD з використанням Jenkins + Helm + Terraform + Argo CD для Django додатку, розгорнутого на AWS EKS.
 
 ## Структура проекту
 
 ```
-lesson-7/
+Project/
 │
-├── main.tf              # Основний файл для підключення модулів
-├── backend.tf           # Конфігурація backend для станів (S3 + DynamoDB)
-├── outputs.tf           # Загальні виходи ресурсів
+├── main.tf                  # Головний файл для підключення модулів
+├── backend.tf               # Налаштування бекенду для стейтів (S3 + DynamoDB)
+├── outputs.tf               # Загальні виводи ресурсів
 │
-├── modules/             # Директорія з усіма модулями
-│   ├── s3-backend/      # Модуль для S3 та DynamoDB
-│   │   ├── s3.tf        # Створення S3 bucket
-│   │   ├── dynamodb.tf  # Створення DynamoDB
-│   │   ├── variables.tf # Змінні для S3
-│   │   └── outputs.tf   # Виходи для S3 та DynamoDB
+├── modules/                 # Каталог з усіма модулями
+│   ├── s3-backend/          # Модуль для S3 та DynamoDB
+│   │   ├── s3.tf            # Створення S3-бакета
+│   │   ├── dynamodb.tf      # Створення DynamoDB
+│   │   ├── variables.tf     # Змінні для S3
+│   │   └── outputs.tf       # Виведення інформації про S3 та DynamoDB
 │   │
-│   ├── vpc/             # Модуль для VPC
-│   │   ├── vpc.tf       # Створення VPC, підмереж, Internet Gateway
-│   │   ├── routes.tf    # Налаштування маршрутизації
-│   │   ├── variables.tf # Змінні для VPC
-│   │   └── outputs.tf   # Виходи VPC та підмереж
+│   ├── vpc/                 # Модуль для VPC
+│   │   ├── vpc.tf           # Створення VPC, підмереж, Internet Gateway
+│   │   ├── routes.tf        # Налаштування маршрутизації
+│   │   ├── variables.tf     # Змінні для VPC
+│   │   └── outputs.tf  
 │   │
-│   ├── ecr/             # Модуль для ECR
-│   │   ├── ecr.tf       # Створення ECR репозиторію
-│   │   ├── variables.tf # Змінні для ECR
-│   │   └── outputs.tf   # Вивід URL репозиторію
+│   ├── ecr/                 # Модуль для ECR
+│   │   ├── ecr.tf           # Створення ECR репозиторію
+│   │   ├── variables.tf     # Змінні для ECR
+│   │   └── outputs.tf       # Виведення URL репозиторію
 │   │
-│   ├── eks/             # Модуль для Kubernetes кластера
-│   │   ├── eks.tf       # Створення EKS кластера та групи вузлів
-│   │   ├── variables.tf # Змінні для EKS
-│   │   └── outputs.tf   # Виходи інформації про кластер
+│   ├── eks/                 # Модуль для Kubernetes кластера
+│   │   ├── eks.tf           # Створення кластера
+│   │   ├── aws_ebs_csi_driver.tf # Встановлення плагіну csi drive
+│   │   ├── variables.tf     # Змінні для EKS
+│   │   └── outputs.tf       # Виведення інформації про кластер
+│   │
+│   ├── jenkins/             # Модуль для Helm-установки Jenkins
+│   │   ├── jenkins.tf       # Helm release для Jenkins
+│   │   ├── variables.tf     # Змінні (ресурси, креденшели, values)
+│   │   ├── values.yaml      # Конфігурація jenkins
+│   │   └── outputs.tf       # Виводи (URL, пароль адміністратора)
+│   │ 
+│   └── argo_cd/             # Модуль для Helm-установки Argo CD
+│       ├── argo_cd.tf       # Helm release для Argo CD
+│       ├── variables.tf     # Змінні (версія чарта, namespace, repo URL тощо)
+│       ├── values.yaml      # Кастомна конфігурація Argo CD
+│       ├── outputs.tf       # Виводи (hostname, initial admin password)
+│       └── charts/          # Helm-чарт для створення app'ів
+│           ├── Chart.yaml
+│           ├── values.yaml  # Список applications, repositories
+│           └── templates/
+│               ├── application.yaml
+│               └── repository.yaml
 │
 ├── charts/
 │   └── django-app/
@@ -40,192 +59,193 @@ lesson-7/
 │       │   ├── deployment.yaml
 │       │   ├── service.yaml
 │       │   ├── configmap.yaml
-│       │   ├── hpa.yaml
-│       │   ├── serviceaccount.yaml
-│       │   └── _helpers.tpl
+│       │   └── hpa.yaml
 │       ├── Chart.yaml
-│       └── values.yaml  # ConfigMap з змінними середовища
+│       └── values.yaml     # ConfigMap зі змінними середовища
 ```
 
 ## Передумови
 
-- AWS CLI налаштований з відповідними обліковими даними
-- Terraform встановлений (версія >= 1.0)
-- kubectl встановлений
-- Helm встановлений (версія >= 3.0)
-- Docker встановлений та налаштований
+1. **AWS CLI** налаштований з відповідними креденшелами
+2. **Terraform** (>= 1.0)
+3. **kubectl** налаштований для EKS кластера
+4. **Helm** (>= 3.0)
 
-## Компоненти інфраструктури
+## Як застосувати Terraform
 
-### 1. VPC Модуль
-- Створює VPC з CIDR блоком 10.0.0.0/16
-- 3 публічні підмережі по зонах доступності
-- 3 приватні підмережі по зонах доступності
-- Internet Gateway для публічного доступу
-- Таблиці маршрутизації для правильної роботи мережі
-
-### 2. ECR Модуль
-- Створює Elastic Container Registry репозиторій
-- Включає сканування образів при завантаженні
-- Надає URL репозиторію для завантаження Docker образів
-
-### 3. EKS Модуль
-- Створює EKS кластер в приватних підмережах
-- Налаштовує групу вузлів з екземплярами t3.medium
-- Налаштовує IAM ролі та політики
-- Конфігурує групи безпеки
-- Включає автомасштабування (1-6 вузлів)
-
-### 4. Helm Чарт
-- Deployment з Django додатком
-- LoadBalancer сервіс для зовнішнього доступу
-- Horizontal Pod Autoscaler (2-6 подів, поріг 70% CPU)
-- ConfigMap для змінних середовища
-- ServiceAccount для дозволів подів
-
-## Кроки розгортання
-
-### Крок 1: Розгортання інфраструктури
-
+### 1. Ініціалізація Terraform
 ```bash
-# Ініціалізація Terraform
 terraform init
+```
 
-# Планування розгортання
+### 2. Перевірка конфігурації
+```bash
+terraform validate
 terraform plan
+```
 
-# Застосування інфраструктури
+### 3. Застосування інфраструктури
+```bash
 terraform apply
 ```
 
-### Крок 2: Налаштування kubectl
-
-Після успішного розгортання налаштуйте kubectl для доступу до EKS кластера:
-
+### 4. Налаштування kubectl
 ```bash
-# Отримати команду kubeconfig з виходів
-terraform output kubeconfig_command
-
-# Виконати команду (замінити на фактичний вивід)
 aws eks update-kubeconfig --region eu-central-1 --name lesson-7-eks
+```
 
-# Перевірити доступ до кластера
+### 5. Перевірка розгортання
+```bash
 kubectl get nodes
+kubectl get pods -A
 ```
 
-### Крок 3: Збірка та завантаження Docker образу
+## Як перевірити Jenkins job
 
+### 1. Доступ до Jenkins
 ```bash
-# Отримати URL ECR репозиторію
-terraform output ecr_repo_url
+# Отримати LoadBalancer URL
+kubectl get svc jenkins -n jenkins
 
-# Вхід в ECR
-aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin $(terraform output -raw ecr_repo_url)
-
-# Збірка Django образу (припускаючи, що у вас є код Django додатку)
-docker build -t django-app .
-
-# Тегування образу
-docker tag django-app:latest $(terraform output -raw ecr_repo_url):latest
-
-# Завантаження в ECR
-docker push $(terraform output -raw ecr_repo_url):latest
+# Або використати port-forward
+kubectl port-forward svc/jenkins -n jenkins 8080:8080
 ```
 
-### Крок 4: Розгортання Django додатку з Helm
+### 2. Вхід в Jenkins
+- **URL**: `http://localhost:8080` (при port-forward) або LoadBalancer URL
+- **Користувач**: `admin`
+- **Пароль**: `admin123`
 
+### 3. Створення Pipeline Job
+1. Натисніть **"New Item"**
+2. Виберіть **"Pipeline"**
+3. Назвіть job (наприклад, "django-app-pipeline")
+4. В розділі **Pipeline**:
+   - **Definition**: Pipeline script from SCM
+   - **SCM**: Git
+   - **Repository URL**: ваш репозиторій
+   - **Script Path**: Jenkinsfile
+
+### 4. Налаштування Jenkinsfile
+```groovy
+pipeline {
+    agent {
+        kubernetes {
+            yaml """
+                apiVersion: v1
+                kind: Pod
+                spec:
+                  containers:
+                  - name: kaniko
+                    image: gcr.io/kaniko-project/executor:latest
+                    command: ["/busybox/cat"]
+                    tty: true
+                    volumeMounts:
+                    - name: docker-sock
+                      mountPath: /var/run/docker.sock
+                  volumes:
+                  - name: docker-sock
+                    hostPath:
+                      path: /var/run/docker.sock
+            """
+        }
+    }
+    
+    stages {
+        stage('Build and Push') {
+            steps {
+                container('kaniko') {
+                    sh '''
+                        /kaniko/executor \
+                        --context=. \
+                        --dockerfile=Dockerfile \
+                        --destination=381492188178.dkr.ecr.eu-central-1.amazonaws.com/lesson-5-ecr:latest
+                    '''
+                }
+            }
+        }
+        
+        stage('Update Helm Chart') {
+            steps {
+                sh '''
+                    # Оновлення values.yaml з новим тегом
+                    sed -i 's/tag: .*/tag: latest/' charts/django-app/values.yaml
+                    git add charts/django-app/values.yaml
+                    git commit -m "Update image tag to latest"
+                    git push origin main
+                '''
+            }
+        }
+    }
+}
+```
+
+### 5. Запуск Job
+1. Натисніть **"Build Now"** на вашому pipeline
+2. Переглядайте логи в **Console Output**
+3. Перевірте статус кожного stage
+
+## Як побачити результат в Argo CD
+
+### 1. Доступ до Argo CD
 ```bash
-# Перейти в директорію charts
-cd charts/django-app
+# Отримати LoadBalancer URL
+kubectl get svc argocd-server -n argocd
 
-# Оновити values.yaml з URL ECR репозиторію
-# Замінити значення image.repository на ваш ECR URL
-
-# Встановити Helm чарт
-helm install django-app . --namespace default --create-namespace
-
-# Перевірити статус розгортання
-kubectl get pods
-kubectl get services
-kubectl get hpa
+# Або використати port-forward
+kubectl port-forward svc/argocd-server -n argocd 8080:443
 ```
 
-### Крок 5: Перевірка розгортання
+### 2. Вхід в Argo CD
+- **URL**: `https://localhost:8080` (при port-forward) або LoadBalancer URL
+- **Користувач**: `admin`
+- **Пароль**: `admin123`
 
+### 3. Створення Application в Argo CD
+1. Натисніть **"+ NEW APP"**
+2. Заповніть форму:
+   - **Application Name**: `django-app`
+   - **Project**: `default`
+   - **Sync Policy**: `Automatic`
+   - **Repository URL**: ваш Git репозиторій
+   - **Path**: `charts/django-app`
+   - **Cluster URL**: `https://kubernetes.default.svc`
+   - **Namespace**: `default`
+
+### 4. Перевірка синхронізації
+1. Після створення application, Argo CD автоматично синхронізує
+2. Переглядайте статус в колонці **SYNC STATUS**
+3. Натисніть на application для деталей
+4. В розділі **TREE** побачите всі ресурси Kubernetes
+
+### 5. Моніторинг змін
+- Argo CD автоматично відстежує зміни в Git репозиторії
+- При push нових змін в Helm chart, Argo CD автоматично синхронізує
+- Переглядайте історію синхронізації в **HISTORY**
+
+### 6. Перевірка розгорнутого додатку
 ```bash
-# Перевірити статус подів
-kubectl get pods -l app.kubernetes.io/name=django-app
+# Перевірити под'и
+kubectl get pods -l app=django-app
 
-# Перевірити сервіс
-kubectl get svc -l app.kubernetes.io/name=django-app
+# Перевірити сервіси
+kubectl get svc -l app=django-app
 
-# Перевірити HPA
-kubectl get hpa
-
-# Перевірити ConfigMap
-kubectl get configmap -l app.kubernetes.io/name=django-app
-
-# Отримати зовнішню IP (LoadBalancer)
-kubectl get svc django-app -o wide
+# Перевірити логи
+kubectl logs -l app=django-app
 ```
 
-## Змінні середовища
+## CI/CD Pipeline Flow
 
-Додаток використовує ConfigMap для змінних середовища. Ключові змінні включають:
+1. **Code Push** → Jenkins збирає Docker образ
+2. **Build & Push** → Образ пушиться в ECR
+3. **Update Chart** → Helm chart values оновлюються
+4. **Git Commit** → Зміни комітяться в репозиторій
+5. **Argo CD Sync** → Автоматично розгортає в EKS
 
-- `DEBUG`: Режим налагодження Django
-- `SECRET_KEY`: Секретний ключ Django
-- `ALLOWED_HOSTS`: Дозволені імена хоста
-- `DATABASE_URL`: Рядок підключення до бази даних
-- `CORS_ALLOWED_ORIGINS`: Конфігурація CORS
-- `REDIS_URL`: Рядок підключення до Redis
-- `EMAIL_BACKEND`: Конфігурація email backend
-- `STATIC_URL` та `MEDIA_URL`: URL для статичних/медіа файлів
-- `LOG_LEVEL`: Рівень логування
+## Конфігурація
 
-## Конфігурація автомасштабування
-
-- **Автомасштабування подів**: 2-6 реплік на основі використання CPU (поріг 70%)
-- **Автомасштабування вузлів**: 1-6 вузлів на основі потреби кластера
-- **Ліміти ресурсів**: CPU: 500m, Memory: 512Mi
-- **Запити ресурсів**: CPU: 250m, Memory: 256Mi
-
-## Моніторинг та діагностика
-
-### Перевірка статусу кластера
-```bash
-kubectl cluster-info
-kubectl get nodes
-kubectl top nodes
-```
-
-### Перевірка статусу додатку
-```bash
-kubectl get pods -l app.kubernetes.io/name=django-app
-kubectl logs -l app.kubernetes.io/name=django-app
-kubectl describe pod <pod-name>
-```
-
-### Перевірка статусу HPA
-```bash
-kubectl get hpa
-kubectl describe hpa django-app
-```
-
-### Перевірка сервісу та Load Balancer
-```bash
-kubectl get svc
-kubectl describe svc django-app
-```
-
-## Очищення
-
-Для видалення всіх ресурсів:
-
-```bash
-# Видалити Helm release
-helm uninstall django-app
-
-# Знищити інфраструктуру Terraform
-terraform destroy
-```
+- **Jenkins**: Налаштований з Kaniko для збірки контейнерів
+- **Argo CD**: Моніторить Git репозиторій на зміни
+- **EKS**: Kubernetes кластер для розгортання додатків
+- **ECR**: Реєстр контейнерів для Docker образів

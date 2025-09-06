@@ -1,0 +1,7 @@
+# Default values for argo-cd-apps
+# This is a YAML-formatted file.
+
+# Applications and repositories can be added here when needed
+applications: []
+
+repositories: []

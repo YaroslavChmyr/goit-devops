@@ -1,0 +1,38 @@
+global:
+  domain: argocd.local
+
+server:
+  service:
+    type: ${server_service_type}
+    servicePort: ${server_service_port}
+  
+  config:
+    admin.password: ${admin_password}
+    admin.passwordMtime: "2023-01-01T00:00:00Z"
+  
+  extraArgs:
+    - --insecure
+
+controller:
+  replicas: 1
+
+repoServer:
+  replicas: 1
+
+applicationSet:
+  replicas: 1
+
+dex:
+  enabled: false
+
+redis:
+  enabled: true
+  replicas: 1
+
+notifications:
+  enabled: true
+  replicas: 1
+
+server:
+  replicas: 1
+

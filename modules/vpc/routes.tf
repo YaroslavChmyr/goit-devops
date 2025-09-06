@@ -18,7 +18,7 @@ resource "aws_route_table_association" "public_assoc" {
 # NAT Gateway for private subnets
 resource "aws_eip" "nat" {
   domain = "vpc"
-  tags = { Name = "${var.vpc_name}-nat-eip" }
+  tags   = { Name = "${var.vpc_name}-nat-eip" }
 }
 
 resource "aws_nat_gateway" "main" {

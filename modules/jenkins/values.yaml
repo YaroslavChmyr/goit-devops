@@ -1,0 +1,72 @@
+controller:
+  # Jenkins admin settings
+  adminUser: ${admin_user}
+  adminPassword: ${admin_password}
+
+  serviceType: ${service_type}
+  servicePort: ${service_port}
+
+  jenkinsUrlProtocol: http
+  jenkinsUrl: "http://jenkins.local"
+
+  # Use newer Jenkins version
+  image: "jenkins/jenkins:2.440.3-jdk11"
+
+  # Persistence
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: gp2
+
+  # RBAC
+  rbac:
+    create: true
+
+  # Install plugins (compatible versions)
+  installPlugins:
+    - kubernetes:latest
+    - workflow-job:latest
+    - workflow-aggregator:latest
+    - git:latest
+    - configuration-as-code:latest
+    - amazon-ecr:latest
+    - pipeline-utility-steps:latest
+
+  # JCasC for Kubernetes agent
+  JCasC:
+    configScripts:
+      kubernetes-agent: |
+        jenkins:
+          clouds:
+            - kubernetes:
+                name: "kubernetes"
+                namespace: "jenkins"
+                serverUrl: "https://kubernetes.default"
+                jenkinsUrl: "http://jenkins:8080"
+                jenkinsTunnel: "jenkins-agent:50000"
+                containerCapStr: "10"
+                templates:
+                  - name: "kaniko"
+                    namespace: "jenkins"
+                    label: "kaniko"
+                    containers:
+                      - name: "kaniko"
+                        image: "gcr.io/kaniko-project/executor:latest"
+                        command: "/busybox/cat"
+                        ttyEnabled: true
+                        args: ""
+                    volumes:
+                      - hostPathVolume:
+                          hostPath: "/var/run/docker.sock"
+                          mountPath: "/var/run/docker.sock"
+
+agent:
+  enabled: false # Disable default Jenkins agent pod
+
+# AWS credentials (to push to ECR)
+# Configure these via Jenkins credentials in production
+secrets:
+  aws:
+    accessKeyId: ""  # Set via Jenkins credentials
+    secretAccessKey: ""  # Set via Jenkins credentials
+    region: ${aws_region}
