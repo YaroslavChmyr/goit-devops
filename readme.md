@@ -41,6 +41,13 @@ Project/
 │   │   ├── values.yaml      # Конфігурація jenkins
 │   │   └── outputs.tf       # Виводи (URL, пароль адміністратора)
 │   │ 
+│   ├── rds/                 # Модуль для RDS бази даних
+│   │   ├── rds.tf           # Створення RDS бази даних  
+│   │   ├── aurora.tf        # Створення aurora кластера бази даних  
+│   │   ├── shared.tf        # Спільні ресурси  
+│   │   ├── variables.tf     # Змінні (ресурси, креденшели, values)
+│   │   └── outputs.tf       # Виводи (endpoint, port, engine тощо)
+│   │ 
 │   └── argo_cd/             # Модуль для Helm-установки Argo CD
 │       ├── argo_cd.tf       # Helm release для Argo CD
 │       ├── variables.tf     # Змінні (версія чарта, namespace, repo URL тощо)
@@ -63,6 +70,299 @@ Project/
 │       ├── Chart.yaml
 │       └── values.yaml     # ConfigMap зі змінними середовища
 ```
+
+## Модуль RDS
+
+Універсальний модуль RDS підтримує як звичайні RDS інстанси, так і Aurora кластери. Модуль автоматично створює всі необхідні ресурси: DB Subnet Group, Security Group, Parameter Group та IAM ролі для моніторингу.
+
+### Приклад використання модуля
+
+#### Звичайний RDS інстанс (PostgreSQL)
+```hcl
+module "rds" {
+  source = "./modules/rds"
+
+  # Базова конфігурація
+  use_aurora      = false
+  db_name         = "lesson5db"
+  master_username = "admin"
+  master_password = "SecurePassword123!"
+
+  # Налаштування двигуна
+  engine         = "postgres"
+  engine_version = "15.4"
+  instance_class = "db.t3.micro"
+
+  # Мережева конфігурація
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnet_ids
+
+  # Безпека
+  allowed_cidr_blocks = [module.vpc.vpc_cidr_block]
+
+  # Високий рівень доступності
+  multi_az = false
+
+  # Резервне копіювання
+  backup_retention_period = 7
+  skip_final_snapshot     = true
+
+  # Захист від видалення
+  deletion_protection = false
+
+  tags = {
+    Environment = "lesson-5"
+    Project     = "goit-devops"
+  }
+
+  depends_on = [module.vpc]
+}
+```
+
+#### Aurora кластер (PostgreSQL)
+```hcl
+module "rds_aurora" {
+  source = "./modules/rds"
+
+  # Базова конфігурація
+  use_aurora      = true
+  db_name         = "lesson5db-aurora"
+  master_username = "admin"
+  master_password = "SecurePassword123!"
+
+  # Налаштування двигуна
+  engine         = "postgres"
+  engine_version = "15.4"
+  aurora_instance_class = "db.r5.large"
+  aurora_instances_count = 2
+
+  # Мережева конфігурація
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnet_ids
+
+  # Безпека
+  allowed_cidr_blocks = [module.vpc.vpc_cidr_block]
+
+  # Резервне копіювання
+  backup_retention_period = 7
+  skip_final_snapshot     = true
+
+  # Захист від видалення
+  deletion_protection = false
+
+  tags = {
+    Environment = "lesson-5"
+    Project     = "goit-devops"
+  }
+
+  depends_on = [module.vpc]
+}
+```
+
+### Опис змінних модуля
+
+#### Основні змінні
+
+| Змінна | Тип | За замовчуванням | Опис |
+|--------|-----|------------------|------|
+| `use_aurora` | `bool` | `false` | Чи створювати Aurora кластер замість звичайного RDS інстансу |
+| `db_name` | `string` | - | Назва бази даних (обов'язково) |
+| `master_username` | `string` | - | Майстер-користувач бази даних (обов'язково) |
+| `master_password` | `string` | - | Пароль майстер-користувача (обов'язково, sensitive) |
+
+#### Налаштування двигуна
+
+| Змінна | Тип | За замовчуванням | Опис |
+|--------|-----|------------------|------|
+| `engine` | `string` | `"postgres"` | Тип двигуна БД (`postgres`, `mysql`) |
+| `engine_version` | `string` | `"15.4"` | Версія двигуна БД |
+| `instance_class` | `string` | `"db.t3.micro"` | Клас інстансу для RDS |
+| `multi_az` | `bool` | `false` | Чи увімкнути Multi-AZ розгортання |
+
+#### Налаштування Aurora
+
+| Змінна | Тип | За замовчуванням | Опис |
+|--------|-----|------------------|------|
+| `aurora_instance_class` | `string` | `"db.r5.large"` | Клас інстансу для Aurora |
+| `aurora_instances_count` | `number` | `2` | Кількість інстансів в Aurora кластері |
+| `aurora_cluster_identifier` | `string` | `null` | Ідентифікатор Aurora кластера (автоматично генерується) |
+
+#### Налаштування сховища
+
+| Змінна | Тип | За замовчуванням | Опис |
+|--------|-----|------------------|------|
+| `allocated_storage` | `number` | `20` | Розмір сховища в ГБ (тільки для RDS) |
+| `max_allocated_storage` | `number` | `100` | Максимальний розмір сховища в ГБ (тільки для RDS) |
+| `storage_type` | `string` | `"gp2"` | Тип сховища (тільки для RDS) |
+
+#### Налаштування резервного копіювання
+
+| Змінна | Тип | За замовчуванням | Опис |
+|--------|-----|------------------|------|
+| `backup_retention_period` | `number` | `7` | Період зберігання резервних копій (дні) |
+| `backup_window` | `string` | `"03:00-04:00"` | Вікно для резервного копіювання |
+| `maintenance_window` | `string` | `"sun:04:00-sun:05:00"` | Вікно для технічного обслуговування |
+
+#### Налаштування безпеки
+
+| Змінна | Тип | За замовчуванням | Опис |
+|--------|-----|------------------|------|
+| `vpc_id` | `string` | - | ID VPC для створення БД (обов'язково) |
+| `subnet_ids` | `list(string)` | - | Список ID підмереж для DB Subnet Group (обов'язково) |
+| `allowed_cidr_blocks` | `list(string)` | `[]` | Список CIDR блоків з дозволом доступу до БД |
+| `port` | `number` | `5432` | Порт бази даних |
+
+#### Налаштування захисту
+
+| Змінна | Тип | За замовчуванням | Опис |
+|--------|-----|------------------|------|
+| `deletion_protection` | `bool` | `false` | Чи увімкнути захист від видалення |
+| `skip_final_snapshot` | `bool` | `false` | Чи пропустити фінальний снапшот при видаленні |
+| `final_snapshot_identifier` | `string` | `null` | Ідентифікатор фінального снапшоту |
+
+#### Додаткові налаштування
+
+| Змінна | Тип | За замовчуванням | Опис |
+|--------|-----|------------------|------|
+| `tags` | `map(string)` | `{}` | Додаткові теги для ресурсів |
+
+### Як змінити тип БД, двигун, клас інстансу
+
+#### 1. Зміна типу БД (RDS ↔ Aurora)
+
+**Переключення на Aurora:**
+```hcl
+module "rds" {
+  source = "./modules/rds"
+  
+  use_aurora = true  # Зміна з false на true
+  
+  # Aurora-специфічні налаштування
+  aurora_instance_class = "db.r5.large"
+  aurora_instances_count = 2
+  
+  # ... інші налаштування
+}
+```
+
+**Переключення на RDS:**
+```hcl
+module "rds" {
+  source = "./modules/rds"
+  
+  use_aurora = false  # Зміна з true на false
+  
+  # RDS-специфічні налаштування
+  instance_class = "db.t3.micro"
+  allocated_storage = 20
+  
+  # ... інші налаштування
+}
+```
+
+#### 2. Зміна двигуна БД
+
+**PostgreSQL:**
+```hcl
+module "rds" {
+  source = "./modules/rds"
+  
+  engine = "postgres"
+  engine_version = "15.4"  # або "14.9", "13.12"
+  
+  # ... інші налаштування
+}
+```
+
+**MySQL:**
+```hcl
+module "rds" {
+  source = "./modules/rds"
+  
+  engine = "mysql"
+  engine_version = "8.0.35"  # або "5.7.44"
+  
+  # ... інші налаштування
+}
+```
+
+#### 3. Зміна класу інстансу
+
+**Для RDS:**
+```hcl
+module "rds" {
+  source = "./modules/rds"
+  
+  use_aurora = false
+  instance_class = "db.t3.small"  # або "db.t3.medium", "db.m5.large"
+  
+  # ... інші налаштування
+}
+```
+
+**Для Aurora:**
+```hcl
+module "rds" {
+  source = "./modules/rds"
+  
+  use_aurora = true
+  aurora_instance_class = "db.r5.xlarge"  # або "db.r6g.large", "db.t4g.medium"
+  
+  # ... інші налаштування
+}
+```
+
+#### 4. Налаштування високої доступності
+
+**Multi-AZ для RDS:**
+```hcl
+module "rds" {
+  source = "./modules/rds"
+  
+  use_aurora = false
+  multi_az = true  # Увімкнути Multi-AZ
+  
+  # ... інші налаштування
+}
+```
+
+**Кілька інстансів для Aurora:**
+```hcl
+module "rds" {
+  source = "./modules/rds"
+  
+  use_aurora = true
+  aurora_instances_count = 3  # Збільшити кількість інстансів
+  
+  # ... інші налаштування
+}
+```
+
+### Виводи модуля
+
+Модуль надає наступні виводи:
+
+| Вивід | Опис |
+|-------|------|
+| `database_endpoint` | Endpoint бази даних (працює для RDS та Aurora) |
+| `database_port` | Порт бази даних |
+| `database_engine` | Двигун бази даних |
+| `database_name` | Назва бази даних |
+| `is_aurora` | Чи це Aurora кластер |
+| `db_subnet_group_name` | Назва DB Subnet Group |
+| `security_group_id` | ID Security Group |
+
+### Автоматично створювані ресурси
+
+Модуль автоматично створює:
+
+1. **DB Subnet Group** - для розміщення БД в підмережах
+2. **Security Group** - з правилами доступу до БД
+3. **Parameter Group** - з базовими параметрами:
+   - `max_connections = 100`
+   - `log_statement = all` (PostgreSQL) / `general_log = 1` (MySQL)
+   - `work_mem = 4MB` (PostgreSQL) / `slow_query_log = 1` (MySQL)
+4. **IAM Role** - для розширеного моніторингу
 
 ## Передумови
 

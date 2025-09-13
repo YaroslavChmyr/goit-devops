@@ -63,3 +63,29 @@ output "argocd_admin_password" {
   value       = module.argo_cd.admin_password
   sensitive   = true
 }
+
+# RDS outputs
+output "database_endpoint" {
+  description = "Database endpoint"
+  value       = module.rds.database_endpoint
+}
+
+output "database_port" {
+  description = "Database port"
+  value       = module.rds.database_port
+}
+
+output "database_engine" {
+  description = "Database engine"
+  value       = module.rds.database_engine
+}
+
+output "database_name" {
+  description = "Database name"
+  value       = module.rds.database_name
+}
+
+output "is_aurora" {
+  description = "Whether this is an Aurora cluster"
+  value       = module.rds.is_aurora
+}

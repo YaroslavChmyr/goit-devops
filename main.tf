@@ -97,3 +97,42 @@ module "argo_cd" {
   depends_on = [module.eks]
 }
 
+module "rds" {
+  source = "./modules/rds"
+
+  # Database configuration
+  use_aurora      = false
+  db_name         = "lesson5db"
+  master_username = "admin"
+  master_password = "SecurePassword123!"
+
+  # Engine configuration
+  engine         = "postgres"
+  engine_version = "15.4"
+  instance_class = "db.t3.micro"
+
+  # Network configuration
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnet_ids
+
+  # Security
+  allowed_cidr_blocks = [module.vpc.vpc_cidr_block]
+
+  # High availability
+  multi_az = false
+
+  # Backup configuration
+  backup_retention_period = 7
+  skip_final_snapshot     = true
+
+  # Protection
+  deletion_protection = false
+
+  tags = {
+    Environment = "lesson-5"
+    Project     = "goit-devops"
+  }
+
+  depends_on = [module.vpc]
+}
+
