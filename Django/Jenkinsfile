@@ -1,0 +1,53 @@
+pipeline {
+    agent any
+    
+    environment {
+        AWS_DEFAULT_REGION = 'us-west-2'
+        ECR_REPOSITORY = 'django-app'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    def image = docker.build("${ECR_REPOSITORY}:${IMAGE_TAG}")
+                }
+            }
+        }
+        
+        stage('Push to ECR') {
+            steps {
+                script {
+                    docker.withRegistry('https://your-account-id.dkr.ecr.us-west-2.amazonaws.com', 'ecr:us-west-2:your-ecr-credentials') {
+                        docker.image("${ECR_REPOSITORY}:${IMAGE_TAG}").push()
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy to EKS') {
+            steps {
+                script {
+                    // Deploy to EKS cluster
+                    sh '''
+                        kubectl set image deployment/django-app django-app=${ECR_REPOSITORY}:${IMAGE_TAG}
+                        kubectl rollout status deployment/django-app
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}

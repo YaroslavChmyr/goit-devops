@@ -1,6 +1,85 @@
-# CI/CD Pipeline з Jenkins + Helm + Terraform + Argo CD
+# AWS Infrastructure as Code з Terraform + EKS + Jenkins + Argo CD
 
-Цей проект реалізує повний процес CI/CD з використанням Jenkins + Helm + Terraform + Argo CD для Django додатку, розгорнутого на AWS EKS.
+Цей проект реалізує повну інфраструктуру AWS з використанням Terraform для розгортання EKS кластера, Jenkins, Argo CD та Django додатку з моніторингом Prometheus/Grafana.
+
+## Швидкий старт
+
+### Передумови
+- AWS CLI налаштований з відповідними правами
+- Terraform >= 1.0
+- kubectl
+- helm
+
+### Розгортання інфраструктури
+
+1. **Клонуйте репозиторій:**
+```bash
+git clone <repository-url>
+cd goit-devops
+```
+
+2. **Ініціалізуйте Terraform:**
+```bash
+terraform init
+```
+
+3. **Перегляньте план розгортання:**
+```bash
+terraform plan
+```
+
+4. **Розгорніть інфраструктуру:**
+```bash
+terraform apply
+```
+
+5. **Налаштуйте kubectl:**
+```bash
+aws eks update-kubeconfig --region eu-central-1 --name lesson-7-eks
+```
+
+6. **Встановіть Prometheus та Grafana:**
+```bash
+# Створіть namespace
+kubectl create namespace monitoring
+
+# Встановіть Prometheus stack
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm install prometheus prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --set grafana.adminPassword=admin123 \
+  --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
+  --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false \
+  --set prometheus.prometheusSpec.ruleSelectorNilUsesHelmValues=false
+```
+
+7. **Застосуйте ServiceMonitor для Django:**
+```bash
+kubectl apply -f monitoring/django-servicemonitor.yaml
+```
+
+### Доступ до сервісів
+
+- **Jenkins**: `kubectl port-forward svc/jenkins 8080:8080` → http://localhost:8080
+- **Argo CD**: `kubectl port-forward svc/argocd-server 8080:80` → http://localhost:8080
+- **Grafana**: `kubectl port-forward svc/prometheus-grafana 3000:80` → http://localhost:3000
+- **Prometheus**: `kubectl port-forward svc/prometheus-kube-prometheus-prometheus 9090:9090` → http://localhost:9090
+
+### Видалення інфраструктури
+
+⚠️ **УВАГА**: Це видалить всю інфраструктуру AWS!
+
+```bash
+# Видаліть Prometheus та Grafana
+helm uninstall prometheus -n monitoring
+
+# Видаліть namespace моніторингу
+kubectl delete namespace monitoring
+
+# Видаліть всю інфраструктуру Terraform
+terraform destroy
+```
 
 ## Структура проекту
 
@@ -69,6 +148,18 @@ Project/
 │       │   └── hpa.yaml
 │       ├── Chart.yaml
 │       └── values.yaml     # ConfigMap зі змінними середовища
+│
+├── Django/                 # Django додаток
+│   ├── app/               # Django додаток з моделями, views, urls
+│   ├── django_project/    # Налаштування Django проекту
+│   ├── Dockerfile         # Docker образ для Django
+│   ├── Jenkinsfile        # CI/CD pipeline для Jenkins
+│   └── requirements.txt   # Python залежності
+│
+└── monitoring/            # Конфігурація моніторингу
+    ├── django-servicemonitor.yaml
+    ├── grafana-ingress.yaml
+    └── prometheus-ingress.yaml
 ```
 
 ## Модуль RDS
@@ -549,3 +640,268 @@ kubectl logs -l app=django-app
 - **Argo CD**: Моніторить Git репозиторій на зміни
 - **EKS**: Kubernetes кластер для розгортання додатків
 - **ECR**: Реєстр контейнерів для Docker образів
+
+## Моніторинг з Prometheus та Grafana
+
+### Встановлення Prometheus
+
+1. **Додайте Prometheus Helm репозиторій:**
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+```
+
+2. **Створіть namespace для моніторингу:**
+```bash
+kubectl create namespace monitoring
+```
+
+3. **Встановіть Prometheus:**
+```bash
+helm install prometheus prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --set grafana.adminPassword=admin123 \
+  --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
+  --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false \
+  --set prometheus.prometheusSpec.ruleSelectorNilUsesHelmValues=false
+```
+
+4. **Перевірте статус:**
+```bash
+kubectl get pods -n monitoring
+kubectl get svc -n monitoring
+```
+
+### Доступ до Grafana
+
+1. **Port-forward для локального доступу:**
+```bash
+kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80
+```
+
+2. **Або отримайте LoadBalancer URL:**
+```bash
+kubectl get svc -n monitoring prometheus-grafana
+```
+
+3. **Доступ до Grafana:**
+- **URL**: `http://localhost:3000` (при port-forward) або LoadBalancer URL
+- **Користувач**: `admin`
+- **Пароль**: `admin123`
+
+### Доступ до Prometheus
+
+1. **Port-forward для локального доступу:**
+```bash
+kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090
+```
+
+2. **Доступ до Prometheus:**
+- **URL**: `http://localhost:9090`
+
+### Налаштування ServiceMonitor для Django додатку
+
+1. **Створіть ServiceMonitor для Django:**
+```yaml
+# monitoring/django-servicemonitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: django-app-monitor
+  namespace: monitoring
+  labels:
+    app: django-app
+spec:
+  selector:
+    matchLabels:
+      app: django-app
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+```
+
+2. **Застосуйте ServiceMonitor:**
+```bash
+kubectl apply -f monitoring/django-servicemonitor.yaml
+```
+
+### Додавання метрик до Django додатку
+
+Django додаток вже налаштований з метриками Prometheus. Файли містять:
+
+1. **Метрики в Django views:**
+```python
+# Django/app/views.py
+from django.http import JsonResponse
+from django.shortcuts import render
+from prometheus_client import Counter, Histogram, generate_latest
+import time
+
+# Метрики
+REQUEST_COUNT = Counter('django_requests_total', 'Total requests', ['method', 'endpoint'])
+REQUEST_DURATION = Histogram('django_request_duration_seconds', 'Request duration')
+
+def index(request):
+    start_time = time.time()
+    
+    # Логіка обробки запиту
+    response_data = {
+        'message': 'Hello from Django app!',
+        'status': 'success'
+    }
+    
+    # Запис метрик
+    REQUEST_COUNT.labels(method=request.method, endpoint='/').inc()
+    REQUEST_DURATION.observe(time.time() - start_time)
+    
+    return JsonResponse(response_data)
+
+def health(request):
+    start_time = time.time()
+    
+    response_data = {
+        'status': 'healthy',
+        'service': 'django-app'
+    }
+    
+    # Запис метрик
+    REQUEST_COUNT.labels(method=request.method, endpoint='/health/').inc()
+    REQUEST_DURATION.observe(time.time() - start_time)
+    
+    return JsonResponse(response_data)
+
+def metrics(request):
+    """Endpoint для Prometheus метрик"""
+    return HttpResponse(generate_latest(), content_type='text/plain')
+```
+
+3. **Додайте URL для метрик:**
+```python
+# Django/app/urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('', views.index, name='index'),
+    path('health/', views.health, name='health'),
+    path('metrics/', views.metrics, name='metrics'),
+]
+```
+
+4. **Оновіть Service для Django:**
+```yaml
+# charts/django-app/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: django-app
+  labels:
+    app: django-app
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics"
+spec:
+  selector:
+    app: django-app
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+  type: ClusterIP
+```
+
+### Налаштування AlertManager
+
+1. **Перевірте AlertManager:**
+```bash
+kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-alertmanager 9093:9093
+```
+
+2. **Доступ до AlertManager:**
+- **URL**: `http://localhost:9093`
+
+### Корисні Grafana Dashboard'и
+
+1. **Kubernetes Cluster Dashboard:**
+   - ID: `7249` (Kubernetes Cluster Monitoring)
+   - Автоматично встановлюється з kube-prometheus-stack
+
+2. **Node Exporter Dashboard:**
+   - ID: `1860` (Node Exporter Full)
+   - Автоматично встановлюється з kube-prometheus-stack
+
+3. **Django App Dashboard (створіть власний):**
+   - Використовуйте метрики `django_requests_total` та `django_request_duration_seconds`
+   - Додайте графіки для response time, request rate, error rate
+
+### Команди для моніторингу
+
+```bash
+# Перевірити всі метрики
+kubectl get servicemonitors -n monitoring
+
+# Перевірити логи Prometheus
+kubectl logs -n monitoring -l app.kubernetes.io/name=prometheus
+
+# Перевірити логи Grafana
+kubectl logs -n monitoring -l app.kubernetes.io/name=grafana
+
+# Перевірити статус AlertManager
+kubectl get pods -n monitoring -l app.kubernetes.io/name=alertmanager
+
+# Тестування метрик Django (після розгортання в EKS)
+kubectl port-forward svc/django-app 8000:8000
+curl http://localhost:8000/metrics
+```
+
+### Налаштування зовнішнього доступу
+
+1. **Ingress для Grafana:**
+```yaml
+# monitoring/grafana-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-ingress
+  namespace: monitoring
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: grafana.yourdomain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus-grafana
+            port:
+              number: 80
+```
+
+2. **Ingress для Prometheus:**
+```yaml
+# monitoring/prometheus-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus-ingress
+  namespace: monitoring
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: prometheus.yourdomain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus-kube-prometheus-prometheus
+            port:
+              number: 9090
+```
